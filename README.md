@@ -1,4 +1,4 @@
-# doce
+# DOCE
 This repo is for code in our arxived paper:
 
 ```
