@@ -151,7 +151,8 @@ class VLlmDecoder(DecoderBase):
 
         # before we set 4096, I set it to 2048.
         # okay, I set it to 4096.
-        self.llm = LLM(model=name, max_model_len=4096, **kwargs)
+        # I change trust_remote_code to True bc I want to use DeepSeekV2 models.
+        self.llm = LLM(model=name, max_model_len=4096, trust_remote_code=True, **kwargs)
 
     def codegen(
         self, prompt: str, do_sample: bool = True, num_samples: int = 200
@@ -1248,6 +1249,15 @@ def make_model(name: str, batch_size: int = 1, temperature: float = 0.8):
             name=f"codellama/CodeLlama-{nb}-Python-hf",
             temperature=temperature,
         )
+
+    elif name == "deepseek-coder-16b-instruct":
+        return DeepSeekInstruct(
+            batch_size=batch_size,
+            name=f"deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+            temperature=temperature,
+            conversational=True,
+        )
+
     elif name.startswith("deepseek-coder"):
         import re
 
