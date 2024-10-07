@@ -55,6 +55,12 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             from evalplus.data import get_mbpp_plus
 
             dataset = get_mbpp_plus()
+        elif args.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                dataset = pickle.load(f)
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
 
         for task_id, task in p.track(dataset.items()):
             if id_range is not None:
