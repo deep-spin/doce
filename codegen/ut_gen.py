@@ -129,6 +129,14 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             prompts = load_jsonl("other_data/mbpp_sanitized_for_test_case_generation_processed.jsonl")
             prompts = {prompt["task_id"].replace("MbppEval", "Mbpp"): prompt for prompt in prompts}
             assert all(task_id in prompts for task_id in dataset)
+        elif args.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                dataset = pickle.load(f)
+            prompts = {task_id: dataset[task_id]["prompt"].rstrip() + "\n    pass" for task_id in dataset}
+            # we dont test task_ids since it's the same dataset without version issues
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
         
         
         save_data = []
@@ -149,7 +157,10 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             
             # I added the the replace method, just to make sure that the prompt is in the same format as the samples as the samples also include the prompt.
             prompt = prompts[task_id]["prompt"].replace("    ", "\t")
-            entry_point = prompts[task_id]["entry_point"]
+            if args.dataset == "lcb":
+                entry_point = dataset[task_id]["entry_point"]
+            else:
+                entry_point = prompts[task_id]["entry_point"]
             
             prompt = construct_ut_gen_prompt(prompt, entry_point)
 
@@ -195,7 +206,7 @@ def main():
     parser.add_argument("--bs", default=1, type=int)
     parser.add_argument("--temperature", default=0.0, type=float)
     parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp"]
+        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
     )
     parser.add_argument("--root", type=str, required=True)
     parser.add_argument("--resume", action="store_true")
