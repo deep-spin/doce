@@ -114,6 +114,13 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             prompts = load_jsonl("other_data/mbpp_sanitized_for_test_case_generation_processed.jsonl")
             prompts = {prompt["task_id"].replace("MbppEval", "Mbpp"): prompt for prompt in prompts}
             assert all(task_id in prompts for task_id in dataset)
+        elif args.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                dataset = pickle.load(f)
+            prompts = {task_id: dataset[task_id]["prompt"].rstrip() + "\n    pass" for task_id in dataset}
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
         
         tokenizer = AutoTokenizer.from_pretrained(args.model_oname)
         
@@ -168,7 +175,7 @@ def main():
     parser.add_argument("--bs", default=1, type=int)
     parser.add_argument("--temperature", default=0.0, type=float)
     parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp"]
+        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
     )
     parser.add_argument("--root", type=str, required=True)
     parser.add_argument("--resume", action="store_true")
