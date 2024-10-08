@@ -104,10 +104,7 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
 
             dataset = get_human_eval_plus()
             prompts = load_jsonl("other_data/HumanEval_for_test_case_generation_processed.jsonl")
-            prompts = {prompt["task_id"]: {
-                "prompt": prompt["prompt"].rstrip() + "\n    pass",
-                "entry_point": prompt["entry_point"]
-            } for prompt in prompts}
+            prompts = {prompt["task_id"]: prompt for prompt in prompts}
             assert all(task_id in dataset for task_id in prompts)
             
         elif args.dataset == "mbpp":
@@ -121,7 +118,10 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             # load pickle file
             with open("other_data/selected_lcb.pkl", "rb") as f:
                 dataset = pickle.load(f)
-            prompts = {task_id: dataset[task_id]["prompt"].rstrip() + "\n    pass" for task_id in dataset}
+            prompts = {task_id: {
+                "prompt": dataset[task_id]["prompt"].rstrip() + "\n    pass",
+                "entry_point": dataset[task_id]["entry_point"],
+                } for task_id in dataset}
         else:
             raise ValueError(f"Unknown dataset: {args.dataset}")
         
