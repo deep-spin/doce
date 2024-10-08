@@ -133,7 +133,10 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             # load pickle file
             with open("other_data/selected_lcb.pkl", "rb") as f:
                 dataset = pickle.load(f)
-            prompts = {task_id: dataset[task_id]["prompt"].rstrip() + "\n    pass" for task_id in dataset}
+            prompts = {task_id: {
+                "prompt": dataset[task_id]["prompt"].rstrip() + "\n    pass",
+                "entry_point": dataset[task_id]["entry_point"],
+                } for task_id in dataset}
             # we dont test task_ids since it's the same dataset without version issues
         else:
             raise ValueError(f"Unknown dataset: {args.dataset}")
@@ -157,10 +160,7 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             
             # I added the the replace method, just to make sure that the prompt is in the same format as the samples as the samples also include the prompt.
             prompt = prompts[task_id]["prompt"].replace("    ", "\t")
-            if args.dataset == "lcb":
-                entry_point = dataset[task_id]["entry_point"]
-            else:
-                entry_point = prompts[task_id]["entry_point"]
+            entry_point = prompts[task_id]["entry_point"]
             
             prompt = construct_ut_gen_prompt(prompt, entry_point)
 
