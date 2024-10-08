@@ -104,7 +104,10 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
 
             dataset = get_human_eval_plus()
             prompts = load_jsonl("other_data/HumanEval_for_test_case_generation_processed.jsonl")
-            prompts = {prompt["task_id"]: prompt for prompt in prompts}
+            prompts = {prompt["task_id"]: {
+                "prompt": prompt["prompt"].rstrip() + "\n    pass",
+                "entry_point": prompt["entry_point"]
+            } for prompt in prompts}
             assert all(task_id in dataset for task_id in prompts)
             
         elif args.dataset == "mbpp":
