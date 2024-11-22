@@ -6,7 +6,7 @@ import pickle
 import threading
 import time
 from collections import Counter, defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 from warnings import warn
@@ -173,13 +173,29 @@ def evaluate(flags):
                 dataset_hash,
                 MBPP_OUTPUT_NOT_NONE_TASKS,
             )
+        elif flags.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                problems = pickle.load(f)
+            dataset_hash = "lcb"
+            with open("other_data/refined_lcb_inputs.pkl", "rb") as f:
+                refined_inputs = pickle.load(f)
+            for task_id in problems:
+                problems[task_id]["base_input"] = refined_inputs[task_id]["base_input"]
+            with open("other_data/refined_lcb_outputs.pkl", "rb") as f:
+                expected_output = pickle.load(f)
+            
+        else:
+            raise ValueError(f"Unknown dataset: {flags.dataset}")
 
         results = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "hash": dataset_hash,
             "eval": {},
         }
-
+        
+        lcb_imports = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n"
+        
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = []
             completion_id = Counter()
@@ -196,6 +212,8 @@ def evaluate(flags):
                     if "solution" in sample
                     else problems[task_id]["prompt"] + sample["completion"]
                 )
+                if flags.dataset == "lcb":
+                    solution = lcb_imports + solution
                 remainings.add(sample["_identifier"])
                 args = (
                     flags.dataset,
@@ -232,13 +250,14 @@ def evaluate(flags):
             threading.Thread(target=stucking_checker).start()
 
             for future in tqdm(as_completed(futures), total=n_samples):
-            # I turn off the tqdm for debug
-            #for future in as_completed(futures):
-                result = future.result()
-                #print(f"one future done, with {result['task_id']}")
-                remainings.remove(result["_identifier"])
-                eval_results[result["task_id"]].append(result)
-
+                try:
+                    result = future.result(timeout=10)
+                    remainings.remove(result["_identifier"])
+                    eval_results[result["task_id"]].append(result)
+                except TimeoutError:
+                    print(f"A sample timed out after 10 seconds")
+                except Exception as e:
+                    print(f"An error occurred: {str(e)}")
         # sort the results for each problem by completion_id
         for task_id, task_results in eval_results.items():
             task_results.sort(key=lambda x: x["completion_id"])
@@ -258,9 +277,12 @@ def evaluate(flags):
                     return [inputs[len(details)]]
 
                 base_stat, base_details, solution_id = res["base"]
-                base_fail_tests = get_failed_tests(
-                    base_stat, base_details, problems[task_id]["base_input"]
-                )
+                if flags.dataset == "lcb":
+                    base_fail_tests = []
+                else:
+                    base_fail_tests = get_failed_tests(
+                        base_stat, base_details, problems[task_id]["base_input"]
+                    )
 
                 # initialize plus tests
                 plus_stat = None
@@ -270,16 +292,18 @@ def evaluate(flags):
                 # with plus tests
                 if not flags.base_only:
                     plus_stat, plus_details, _ = res["plus"]
-                    plus_fail_tests = get_failed_tests(
-                        plus_stat, plus_details, problems[task_id]["plus_input"]
-                    )
+                    if flags.dataset == "lcb":
+                        plus_fail_tests = []
+                    else:
+                        plus_fail_tests = get_failed_tests(
+                            plus_stat, plus_details, problems[task_id]["plus_input"]
+                        )
 
                 if flags.dataset == "mbpp":
                     base_fail_tests = mbpp_serialize_inputs(task_id, base_fail_tests)
                     plus_fail_tests = mbpp_serialize_inputs(task_id, plus_fail_tests)
 
-                results["eval"][task_id].append(
-                    {
+                appended_result ={
                         "task_id": task_id,
                         "solution_id": solution_id,
                         "solution": res["solution"],
@@ -290,7 +314,12 @@ def evaluate(flags):
                         "base_fail_tests": base_fail_tests,
                         "plus_fail_tests": plus_fail_tests,
                     }
-                )
+                if flags.dataset == "lcb":
+                    appended_result["solution"] = res["solution"].replace(lcb_imports, "")
+                    appended_result["difficulty"] = problems[task_id]["difficulty"]
+                    appended_result["contest_date"] = problems[task_id]["contest_date"]
+
+                results["eval"][task_id].append(appended_result)
 
     if os.path.isfile(result_path) and flags.i_just_wanna_run:
         decision = ""
@@ -356,7 +385,7 @@ def evaluate(flags):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp"]
+        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
     )
     parser.add_argument("--samples", required=True, type=str)
     parser.add_argument("--base-only", action="store_true")
