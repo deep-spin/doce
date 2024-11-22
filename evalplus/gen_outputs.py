@@ -226,6 +226,17 @@ def get_outputs(args):
             dataset_hash,
             []
         )
+    elif args.dataset == "lcb":
+        # load pickle file
+        with open("other_data/selected_lcb.pkl", "rb") as f:
+            problems = pickle.load(f)
+        dataset_hash = "lcb"
+        with open("other_data/refined_lcb_inputs.pkl", "rb") as f:
+            refined_inputs = pickle.load(f)
+        for task_id in problems:
+            problems[task_id]["base_input"] = refined_inputs[task_id]["base_input"]
+        with open("other_data/refined_lcb_outputs.pkl", "rb") as f:
+            expected_output = pickle.load(f)
     
     # check if f"{args.work_dir}/{args.gen_dir}/exec_outputs_v2.pkl" exists. If it does, we can skip the generation of the outputs
     if args.gen_fast:
@@ -244,6 +255,7 @@ def get_outputs(args):
         
 
     from tqdm import tqdm
+    lcb_imports = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n"
     exec_outputs = {}
     for task_id in tqdm(eval_results["eval"]):
         exec_outputs[task_id] = {}
@@ -255,10 +267,13 @@ def get_outputs(args):
             elif len(hyp["base_details"]) == 0:
                 exec_outputs[task_id][i]["base"] = {}
             else:
+                hyp_solution = hyp["solution"]
+                if args.dataset == "lcb":
+                    hyp_solution = lcb_imports + hyp_solution
                 out = untrusted_check(
                     dataset=args.dataset,
                     entry_point=problems[task_id]["entry_point"],
-                    code=hyp["solution"],
+                    code=hyp_solution,
                     task_id=task_id,
                     solution_id=hyp["solution_id"],
                     inputs=problems[task_id]["base_input"],
@@ -270,7 +285,7 @@ def get_outputs(args):
                 exec_outputs[task_id][i]["base"] = out
             if hyp["plus_status"] == "pass":
                 exec_outputs[task_id][i]["plus"] = {i: out for i, out in enumerate(expected_output[task_id]["plus"])}
-            elif len(hyp["plus_details"]) == 0:
+            elif len(hyp["plus_details"])  == 0 or args.dataset == "lcb":
                 exec_outputs[task_id][i]["plus"] = {}
             else:
                 if args.gen_fast:
@@ -304,7 +319,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work_dir", type=str, default="/mnt/scratch-artemis/haausing/code_reranking/evalplus_outputs")
     parser.add_argument("--gen_dir", type=str, default="deepseek-coder-33b-instruct_temp_0.8")
-    parser.add_argument("--dataset", type=str, choices=["mbpp", "humaneval"])
+    parser.add_argument("--dataset", type=str, choices=["mbpp", "humaneval", "lcb"])
     parser.add_argument("--gen_fast", action="store_true")
     args = parser.parse_args()
 
