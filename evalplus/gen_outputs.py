@@ -317,7 +317,7 @@ def get_outputs(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--work_dir", type=str, default="/mnt/scratch-artemis/haausing/code_reranking/evalplus_outputs")
+    parser.add_argument("--work_dir", type=str, default="/path/to/evalplus_outputs")
     parser.add_argument("--gen_dir", type=str, default="deepseek-coder-33b-instruct_temp_0.8")
     parser.add_argument("--dataset", type=str, choices=["mbpp", "humaneval", "lcb"])
     parser.add_argument("--gen_fast", action="store_true")
