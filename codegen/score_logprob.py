@@ -14,6 +14,14 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+import signal
+
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutException("Function call timed out")
+
 
 def get_logprobs(args, workdir: PathLike, model: DecoderBase, id_range=None):
     with Progress(
@@ -33,6 +41,12 @@ def get_logprobs(args, workdir: PathLike, model: DecoderBase, id_range=None):
             from evalplus.data import get_mbpp_plus
 
             dataset = get_mbpp_plus()
+        elif args.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                dataset = pickle.load(f)
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
             
         final_logprobs = {}
 
@@ -81,26 +95,56 @@ def get_logprobs(args, workdir: PathLike, model: DecoderBase, id_range=None):
             # first we get the logprob for the prompt
             prompt_logprob = model.score_logprob([prompt], num_samples=1)[0]
             prompt_indices = [list(token.keys())[0] for token in prompt_logprob if token != None]
-            prompt_logprob = [list(token.values())[0] for token in prompt_logprob if token != None]
+            prompt_logprob = [list(token.values())[0].logprob for token in prompt_logprob if token != None]
+            
+            timeout_count = 0
             
             while sidx < args.n_samples:
-                # now we start to score logprob for each hypothesis, note that we only have code for vllm decoders
-                if model.conversational:
-                    logprobs = model.score_logprob(
-                        [prompt + samples[idx].replace("    ", "\t") for idx in samples if idx >= sidx],
-                        num_samples=args.n_samples - sidx,
-                    )
+                # Set the signal handler and a 5-second alarm
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(5)
+                
+                if task_id == "LCB/117" and sidx in list(range(87, 93)):
+                    p.console.print(f"Skipping sidx = {sidx} on task {task_id} as we know it's OOM")
+                    logprobs = ["no logprobs"]
                 else:
-                    logprobs = model.score_logprob(
-                        [samples[idx].replace("    ", "\t") for idx in samples if idx >= sidx],
-                        num_samples=args.n_samples - sidx,
-                    )
-                assert logprobs, "No logprobs from model!"
+                    # now we start to score logprob for each hypothesis, note that we only have code for vllm decoders
+                    try:
+                        if model.conversational:
+                            logprobs = model.score_logprob(
+                                [prompt + samples[idx].replace("    ", "\t") for idx in samples if idx >= sidx],
+                                num_samples=args.n_samples - sidx,
+                            )
+                        else:
+                            logprobs = model.score_logprob(
+                                [samples[idx].replace("    ", "\t") for idx in samples if idx >= sidx],
+                                num_samples=args.n_samples - sidx,
+                            )
+                        p.console.print(f"Successfully scored sidx = {sidx} on task {task_id}")
+                    except TimeoutException:
+                        p.console.print(f"Timeout occurred for sidx = {sidx} on task {task_id}")
+                        logprobs = ["no logprobs"]
+                        timeout_count += 1
+                    except Exception as e:
+                        # we only provide temporary samples to the model to avoid OOM error
+                        p.console.print(f"We have an OOM issue with sidx = {sidx} on task {task_id}")
+                        assert args.bs == 1, "We only support batch size 1 for now"
+                        logprobs = ["no logprobs"]
+                    finally:
+                        signal.alarm(0)  # Ensure the alarm is disabled
+                    if timeout_count > 3:
+                        p.console.print(f"Timeout count for {task_id} exceeds 3, stopping...")
+                        raise ValueError("Timeout count exceeds 3")
+                    assert logprobs, "No logprobs from model!"
                 
                 # now I want to update the outputs dictionary
                 for idx, logprob in enumerate(logprobs):
-                    logprob_indices = [list(token.keys())[0] for token in logprob if token != None]
-                    logprob_values = [list(token.values())[0] for token in logprob if token != None]
+                    if logprob == "no logprobs":
+                        logprob_indices = prompt_indices + [20000] * 50
+                        logprob_values = prompt_logprob + [-1000] * 50
+                    else:
+                        logprob_indices = [list(token.keys())[0] for token in logprob if token != None]
+                        logprob_values = [list(token.values())[0].logprob for token in logprob if token != None]
                     # check if the starting token ids are equal to the prompt_indices
                     assert logprob_indices[:len(prompt_indices)] == prompt_indices, "Indices are not equal"
                     # only append the logprob values that are not in the prompt_logprob
@@ -108,6 +152,9 @@ def get_logprobs(args, workdir: PathLike, model: DecoderBase, id_range=None):
                 sidx += len(logprobs)
             
             final_logprobs[p_name] = outputs
+            with open(os.path.join(workdir, f"logprobs_{p_name}.pkl"), "wb") as f:
+                pickle.dump(final_logprobs, f)
+            p.console.print(f"Saved logprobs for {p_name} to {os.path.join(workdir, f'logprobs_{p_name}.pkl')}")
             ### end ###
     return final_logprobs
 
@@ -118,7 +165,7 @@ def main():
     parser.add_argument("--bs", default=1, type=int)
     parser.add_argument("--temperature", default=0.0, type=float)
     parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp"]
+        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
     )
     parser.add_argument("--root", type=str, required=True)
     parser.add_argument("--n_samples", default=1, type=int)
@@ -167,7 +214,7 @@ def main():
     final_logprobs = get_logprobs(args, workdir=workdir, model=model, id_range=args.id_range)
     
     # save the final_logprobs to a pickle file
-    with open(os.path.join(workdir, "logprobs_full.pkl"), "wb") as f:
+    with open(os.path.join(workdir, "logprobs.pkl"), "wb") as f:
         pickle.dump(final_logprobs, f)
 
 

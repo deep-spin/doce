@@ -110,7 +110,10 @@ class VLlmDecoder(DecoderBase):
     def __init__(self, name: str, **kwargs) -> None:
         super().__init__(name, **kwargs)
 
-        kwargs = {"tensor_parallel_size": int(os.getenv("VLLM_N_GPUS", "1"))}
+        kwargs = {
+            "tensor_parallel_size": int(os.getenv("VLLM_N_GPUS", "1")),
+            "enforce_eager": True,
+            }
         if "CodeLlama" in name:
             kwargs["dtype"] = "bfloat16"
         elif "code-millenials" in name:
@@ -152,6 +155,7 @@ class VLlmDecoder(DecoderBase):
         # before we set 4096, I set it to 2048.
         # okay, I set it to 4096.
         # I change trust_remote_code to True bc I want to use DeepSeekV2 models.
+        print(f"kwargs = {kwargs}")
         self.llm = LLM(model=name, max_model_len=4096, trust_remote_code=True, **kwargs)
 
     def codegen(

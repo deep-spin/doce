@@ -237,9 +237,9 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             from evalplus.data import get_human_eval_plus
 
             dataset = get_human_eval_plus()
-            unit_tests = load_jsonl("/mnt/scratch-artemis/haausing/code_reranking/code/evalplus/other_data/trial_tests.jsonl")
+            unit_tests = load_jsonl("other_data/trial_tests.jsonl")
             unit_tests = {x["task_id"]: x["given_tests"] for x in unit_tests}
-            with open("/mnt/scratch-artemis/haausing/code_reranking/code/evalplus/other_data/trial_expected_output.pkl", "rb") as f:
+            with open("other_data/trial_expected_output.pkl", "rb") as f:
                 expected_output = pickle.load(f)
         elif args.dataset == "mbpp":
             from evalplus.data import get_mbpp_plus, get_mbpp_plus_hash
@@ -251,6 +251,21 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
                 dataset_hash,
                 MBPP_OUTPUT_NOT_NONE_TASKS,
             )
+        elif args.dataset == "lcb":
+            # load pickle file
+            with open("other_data/selected_lcb.pkl", "rb") as f:
+                dataset = pickle.load(f)
+            dataset_hash = "lcb"
+            with open("other_data/refined_lcb_inputs.pkl", "rb") as f:
+                refined_inputs = pickle.load(f)
+            for task_id in dataset:
+                dataset[task_id]["base_input"] = refined_inputs[task_id]["base_input"]
+            with open("other_data/lcb_trial_expected_output.pkl", "rb") as f:
+                expected_output = pickle.load(f)
+            unit_tests = load_jsonl("other_data/lcb_trial_tests.jsonl")
+            unit_tests = {x["task_id"]: x["given_tests"] for x in unit_tests}
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
         
         if args.debugging_turn == 1:
             eval_results = load_json(
@@ -375,24 +390,26 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
                         base_details.append(False)
                     else:
                         base_details.append(True)
-            elif args.dataset == "humaneval":
+            elif args.dataset in ["humaneval", "lcb"]:
                 for i in errors[task_id]:
                     if errors[task_id][i]["base"]["status"] == "pass":
                         base_details.append(True)
                     else:
                         base_details.append(False)
+            else:
+                raise NotImplementedError("You should select the dataset between mbpp, humaneval and lcb.")
             
             prompts = {}
             for idx in samples:
                 if args.dataset == "mbpp":
                     assert type(unit_test) == str, "The unit test should be a string for mbpp since we only have one unit test."
                     prompts[idx] = mbpp_construct_refinement_prompt(prompt, unit_test, samples[idx], errors[task_id][idx]["base"], expected_output[task_id]["base"][0])
-                elif args.dataset == "humaneval":
+                elif args.dataset in ["humaneval", "lcb"]:
                     assert type(unit_test) == list, "The unit test should be a list for humaneval."
                     assert len(unit_test) == len(expected_output[task_id]["base"]), "The length of the unit test should be equal to the length of the expected output."
                     prompts[idx] = humaneval_construct_refinement_prompt(prompt, unit_test, samples[idx], errors[task_id][idx]["base"], expected_output[task_id]["base"])
                 else:
-                    raise NotImplementedError("You should select the dataset between mbpp and humaneval.")
+                    raise NotImplementedError("You should select the dataset between mbpp, humaneval and lcb.")
             task_continue_debug = continue_debug[task_id] if args.debugging_turn > 1 else {}
 
             while sidx < args.n_samples:
@@ -461,7 +478,7 @@ def main():
     parser.add_argument("--bs", default=1, type=int)
     parser.add_argument("--temperature", default=0.0, type=float)
     parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp"]
+        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
     )
     parser.add_argument("--root", type=str, required=True)
     parser.add_argument("--n_samples", default=1, type=int)
