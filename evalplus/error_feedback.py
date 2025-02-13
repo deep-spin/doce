@@ -249,8 +249,8 @@ def unsafe_execute_fast(
         rmdir = os.rmdir
         chdir = os.chdir
         # Disable functionalities that can make destructive changes to the test.
-        # allow only 4GB memory usage
-        maximum_memory_bytes = 4 * 1024 * 1024 * 1024
+        # allow only 1GB memory usage
+        maximum_memory_bytes = 1024 * 1024 * 1024
         reliability_guard(maximum_memory_bytes=maximum_memory_bytes)
         exec_globals = {}
         try:
@@ -445,9 +445,15 @@ def get_errors(args, problems, expected_output, inputs = None):
                     exec_outputs[task_id][i]["base"] = {"status": "pass", "error": "pass"}
                     continue
             ###### end of special case for mbpp ######
+            ###### start of special case for lcb ######
+            lcb_imports = "from string import *\nfrom re import *\nfrom datetime import *\nfrom collections import *\nfrom heapq import *\nfrom bisect import *\nfrom copy import *\nfrom math import *\nfrom random import *\nfrom statistics import *\nfrom itertools import *\nfrom functools import *\nfrom operator import *\nfrom io import *\nfrom sys import *\nfrom json import *\nfrom builtins import *\nfrom typing import *\nimport string\nimport re\nimport datetime\nimport collections\nimport heapq\nimport bisect\nimport copy\nimport math\nimport random\nimport statistics\nimport itertools\nimport functools\nimport operator\nimport io\nimport sys\nimport json\nsys.setrecursionlimit(6*10**5)\n"
+            hyp_solution = hyp["solution"]
+            if args.dataset == "lcb":
+                hyp_solution = lcb_imports + hyp_solution
+            ###### end of special case for lcb ######
             stat, _, feedback = untrusted_check(
                 dataset=args.dataset,
-                code=hyp["solution"],
+                code=hyp_solution,
                 inputs=task_inputs,
                 entry_point=problems[task_id]["entry_point"],
                 expected=task_expected_output,
@@ -469,7 +475,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work_dir", type=str, default="/mnt/scratch-artemis/haausing/code_reranking/evalplus_outputs")
     parser.add_argument("--gen_dir", type=str, default="deepseek-coder-33b-instruct_temp_0.8")
-    parser.add_argument("--dataset", required=True, type=str, choices=["humaneval", "mbpp"])
+    parser.add_argument("--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"])
     parser.add_argument("--fast_check", action="store_true")
     args = parser.parse_args()
     
@@ -482,14 +488,26 @@ def main():
             MBPP_OUTPUT_NOT_NONE_TASKS,
         )
         get_errors(args, problems, expected_output)
-    else:
+    elif args.dataset == "humaneval":
         problems = get_human_eval_plus()
         dataset_hash = get_human_eval_plus_hash()
-        with open("/mnt/scratch-artemis/haausing/code_reranking/code/evalplus/other_data/trial_expected_output.pkl", "rb") as f:
+        with open("/mnt/scratch-artemis/haausing/code_reranking/code/doce/other_data/trial_expected_output.pkl", "rb") as f:
             expected_output = pickle.load(f)
-        inputs = load_jsonl("/mnt/scratch-artemis/haausing/code_reranking/code/evalplus/other_data/trial_inputs.jsonl")
+        inputs = load_jsonl("/mnt/scratch-artemis/haausing/code_reranking/code/doce/other_data/trial_inputs.jsonl")
         inputs = {e["task_id"]:e for e in inputs}
         get_errors(args, problems, expected_output, inputs)
+    elif args.dataset == "lcb":
+        # load pickle file
+        with open("/mnt/scratch-artemis/haausing/code_reranking/code/doce/other_data/selected_lcb.pkl", "rb") as f:
+            problems = pickle.load(f)
+        dataset_hash = "lcb"
+        with open("/mnt/scratch-artemis/haausing/code_reranking/code/doce/other_data/lcb_trial_expected_output.pkl", "rb") as f:
+            expected_output = pickle.load(f)
+        inputs = load_jsonl("/mnt/scratch-artemis/haausing/code_reranking/code/doce/other_data/lcb_trial_inputs.jsonl")
+        inputs = {e["task_id"]:e for e in inputs}
+        get_errors(args, problems, expected_output, inputs)
+    else:
+        raise ValueError(f"Dataset {args.dataset} not supported")
 
 
 if __name__ == "__main__":
