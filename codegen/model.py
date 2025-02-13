@@ -358,6 +358,7 @@ class Zyte(VLlmDecoder):
 """
         return input
 
+
 class OpenChat(VLlmDecoder):
     def __init__(self, name: str, **kwargs) -> None:
         kwargs["conversational"] = True
@@ -628,6 +629,40 @@ Please complete the following Python function in a markdown style code block:
     
     def construct_instruction(self, prompt: str) -> str:
         prompt = f"""You are an AI programming assistant, utilizing the DeepSeek Coder model, developed by DeepSeek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.
+### Instruction:
+Please complete the following Python function in a markdown style code block:
+```python
+{prompt}
+```
+### Response:
+```python
+"""
+        return prompt
+
+
+class QwenInstruct(VLlmDecoder):
+    def __init__(self, name: str, **kwargs) -> None:
+        kwargs["conversational"] = True
+        super().__init__(name, **kwargs)
+        self.eos += ["\n```"]
+
+    def codegen(
+        self, prompt: str, do_sample: bool = True, num_samples: int = 200
+    ) -> List[str]:
+        prompt = f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
+### Instruction:
+Please complete the following Python function in a markdown style code block:
+```python
+{prompt}
+```
+### Response:
+```python
+"""
+
+        return VLlmDecoder.codegen(self, prompt, do_sample, num_samples)
+    
+    def construct_instruction(self, prompt: str) -> str:
+        prompt = f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
 ### Instruction:
 Please complete the following Python function in a markdown style code block:
 ```python
@@ -1290,6 +1325,24 @@ def make_model(name: str, batch_size: int = 1, temperature: float = 0.8):
                 name=f"deepseek-ai/deepseek-coder-{nb}b-base{version_suffix}",
                 temperature=temperature,
             )
+    elif name.startswith("qwen"):
+        import re
+
+        assert "2.5" in name, "We only consider Qwen for now"
+        # format qwen2.5-coder-{nb}b-{|instruct}
+        nb = name.split("-")[2]
+        assert nb.endswith("b")
+        nb.replace("b", "B")
+
+        if "instruct" in name:
+            return QwenInstruct(
+                batch_size=batch_size,
+                name=f"Qwen/Qwen2.5-Coder-{nb}-Instruct",
+                temperature=temperature,
+                conversational=True,
+            )
+        else:
+            raise ValueError(f"We currently do not support base models for Qwen2.5")
     elif name == "wizardcoder-34b":
         return Alpaca(
             batch_size=batch_size,
