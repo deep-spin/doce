@@ -280,18 +280,25 @@ def get_outputs(args):
             hyp_solution = hyp["solution"]
             if args.dataset == "lcb":
                 hyp_solution = lcb_imports + hyp_solution
-            out = untrusted_check(
-                dataset=args.dataset,
-                entry_point=problems[task_id]["entry_point"],
-                code=hyp_solution,
-                task_id=task_id,
-                solution_id=hyp["solution_id"],
-                inputs=generated_inputs,
-                expected=expected_output[task_id]["base"],
-                ref_time=expected_output[task_id]["base_time"],
-                stat=hyp["base_status"],
-                details=hyp["base_details"],
-            )
+            try:
+                # Set a timeout of 10 seconds for each untrusted_check call
+                from evalplus.eval.utils import time_limit
+                with time_limit(10):
+                    out = untrusted_check(
+                        dataset=args.dataset,
+                        entry_point=problems[task_id]["entry_point"],
+                        code=hyp_solution,
+                        task_id=task_id,
+                        solution_id=hyp["solution_id"],
+                        inputs=generated_inputs,
+                        expected=expected_output[task_id]["base"],
+                        ref_time=expected_output[task_id]["base_time"],
+                        stat=hyp["base_status"],
+                        details=hyp["base_details"],
+                    )
+            except Exception as e:
+                print(f"Error processing task {task_id}, solution {i}: {str(e)}")
+                out = {"status": "timeout", "error": str(e)}
             exec_outputs[task_id][i]["base"] = out
             exec_outputs[task_id][i]["plus"] = {}
 

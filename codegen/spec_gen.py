@@ -49,6 +49,7 @@ def spec_gen(
     gen_strs = [x.outputs[0].text.replace("\t", "    ") for x in vllm_outputs]
     return gen_strs
 
+
 def construct_spec_gen_prompt(prompt: str, tokenizer: AutoTokenizer):
     """
     Prompt to generate spec code in two functions `preconditions` and `postconditions`
@@ -82,6 +83,7 @@ You should ensure invalid input or output of the method will raise error in the 
     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + "```python\n"
 
     return prompt
+
 
 def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
     with Progress(
@@ -164,6 +166,7 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             p.console.print(len(spec_code_choices))
             with open(f"{workdir}/specs.jsonl", fd_mode) as f:
                 f.write(json.dumps({"prompt": prompt, "spec_code_choices": spec_code_choices, "task_id": task_id}) + "\n")     
+
 
 def main():
     parser = argparse.ArgumentParser()
