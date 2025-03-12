@@ -1,4 +1,4 @@
 openai
 rich
 accelerate
-vllm
+vllm==0.6.2
