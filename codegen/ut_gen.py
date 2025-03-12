@@ -8,6 +8,8 @@ import pickle
 import time
 import shutil
 
+from .utils import *
+
 from model import DecoderBase, make_model
 from rich.progress import (
     BarColumn,
@@ -19,58 +21,20 @@ from rich.progress import (
 
 from vllm import SamplingParams
 
-def load_json(dir_path: str):
-    with open(dir_path, "r") as f:
-        return json.load(f)
-
-def load_jsonl(dir_path: str):
-    # notice that we use the jsonl file to store the data
-    with open(dir_path, "r") as f:
-        return [json.loads(line) for line in f]
-
-def ut_gen(
-    model: DecoderBase,
-    prompt: str, 
-    do_sample: bool = True, 
-    num_samples: int = 50
-) -> List[str]:
+def ut_gen(model: DecoderBase, prompt: str, do_sample: bool = True, num_samples: int = 50) -> List[str]:
     if do_sample:
         assert model.temperature > 0, "Temperature must be greater than 0!"
     batch_size = min(model.batch_size, num_samples)
 
     vllm_outputs = model.llm.generate(
         [prompt] * batch_size,
-        SamplingParams(
-            temperature=model.temperature,
-            max_tokens=model.max_new_tokens,
-            top_p=0.95 if do_sample else 1.0,
-            stop=model.eos,
-        ),
+        SamplingParams(temperature=model.temperature, max_tokens=model.max_new_tokens, top_p=0.95 if do_sample else 1.0, stop=model.eos),
         use_tqdm=False,
     )
 
     gen_strs = [x.outputs[0].text.replace("\t", "    ") for x in vllm_outputs]
     return gen_strs
 
-#def construct_ut_gen_prompt(prompt: str, entry_point: str) -> str:
-#    return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
-
-### Instruction:
-#I have this function stub, please generate 50 test cases for this function. The function stub is as follow:
-#```python
-#{prompt}
-#```
-#- Each test case is in the form of assertion statement, for example: assert {entry_point}(...) == ...
-#- Each test case is in a single line
-#- The length of each test case should be too long, ideally less than or equal to 150 letters
-#- The test input should not be too long
-#- The inputs of test cases should be diverse and cover corner cases of the function
-#- Test cases should not be repeated
-
-### Response:
-#Here are 50 test cases for function `{entry_point}`:
-#```python
-#assert {entry_point}("""
 
 def construct_ut_gen_prompt(prompt: str, entry_point: str) -> str:
     return f"""# Given a docstring, continue to write the following code with 10 valid assertion statements to check the correctness of the function. Provide diverse test cases. 
@@ -78,6 +42,7 @@ def construct_ut_gen_prompt(prompt: str, entry_point: str) -> str:
 {prompt}
 # check the correctness of `{entry_point}` with 10 different valid assertion statements in the form of \"assert {entry_point}(...) == ...\"
 assert """
+
 
 def check_test_case_validation(test_case):
     if len(test_case.strip()) < 1:
@@ -92,6 +57,7 @@ def check_test_case_validation(test_case):
     except Exception:
         return False
 
+
 def test_case_extract(content, entry_point):
     def _truncate(content):
         for identifier in ['\nclass', '\ndef', '\n#', '\nif', '\nprint']:
@@ -104,11 +70,10 @@ def test_case_extract(content, entry_point):
     checked_assertions = [i for i in truncated_test_cases if check_test_case_validation(i)]
     return checked_assertions
 
+
 def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
     with Progress(
-        TextColumn(
-            f"{args.dataset} •" + "[progress.percentage]{task.percentage:>3.0f}%"
-        ),
+        TextColumn(f"{args.dataset} •" + "[progress.percentage]{task.percentage:>3.0f}%"),
         BarColumn(),
         MofNCompleteColumn(),
         TextColumn("•"),
@@ -133,10 +98,7 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
             # load pickle file
             with open("other_data/selected_lcb.pkl", "rb") as f:
                 dataset = pickle.load(f)
-            prompts = {task_id: {
-                "prompt": dataset[task_id]["prompt"].rstrip() + "\n    pass",
-                "entry_point": dataset[task_id]["entry_point"],
-                } for task_id in dataset}
+            prompts = {task_id: {"prompt": dataset[task_id]["prompt"].rstrip() + "\n    pass", "entry_point": dataset[task_id]["entry_point"]} for task_id in dataset}
             # we dont test task_ids since it's the same dataset without version issues
         else:
             raise ValueError(f"Unknown dataset: {args.dataset}")
@@ -152,8 +114,6 @@ def code_generate(args, workdir: PathLike, model: DecoderBase, id_range=None):
                     continue
 
             p_name = task_id.replace("/", "_")
-            if args.contract_type != "none" and task["contract"] == "":
-                continue
 
             log = f"TestCaseGen: {p_name} @ {model}"
             p.console.print(log)
@@ -205,17 +165,9 @@ def main():
     parser.add_argument("--model", required=True, type=str)
     parser.add_argument("--bs", default=1, type=int)
     parser.add_argument("--temperature", default=0.0, type=float)
-    parser.add_argument(
-        "--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"]
-    )
+    parser.add_argument("--dataset", required=True, type=str, choices=["humaneval", "mbpp", "lcb"])
     parser.add_argument("--root", type=str, required=True)
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--contract-type",
-        default="none",
-        type=str,
-        choices=["none", "code", "docstring"],
-    )
     parser.add_argument("--greedy", action="store_true")
     # id_range is list
     parser.add_argument("--id-range", default=None, nargs="+", type=int)
@@ -231,22 +183,13 @@ def main():
         assert args.id_range[0] < args.id_range[1], "id_range must be increasing"
         args.id_range = tuple(args.id_range)
 
-    # Make project dir
     os.makedirs(args.root, exist_ok=True)
-    # Make dataset dir
     os.makedirs(os.path.join(args.root, args.dataset), exist_ok=True)
+    
     # Make dir for codes generated by each model
     args.model = args.model.lower()
-    model = make_model(
-        name=args.model, batch_size=args.bs, temperature=args.temperature
-    )
-    workdir = os.path.join(
-        args.root,
-        args.dataset+"_unit_tests",
-        args.model
-        + f"_temp_{args.temperature}"
-        + ("" if args.contract_type == "none" else f"-contract-{args.contract_type}"),
-    )
+    model = make_model(name=args.model, batch_size=args.bs, temperature=args.temperature)
+    workdir = os.path.join(args.root, args.dataset + "_unit_tests", args.model + f"_temp_{args.temperature}")
     if args.greedy:
         workdir = workdir.replace("temp_0.0", "temp_0")
     

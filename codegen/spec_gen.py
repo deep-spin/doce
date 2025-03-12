@@ -9,6 +9,8 @@ import pickle
 import time
 import shutil
 
+from .utils import *
+
 from transformers import AutoTokenizer
 
 from model import DecoderBase, make_model
@@ -22,14 +24,6 @@ from rich.progress import (
 
 from vllm import SamplingParams
 
-def load_json(dir_path: str):
-    with open(dir_path, "r") as f:
-        return json.load(f)
-
-def load_jsonl(dir_path: str):
-    # notice that we use the jsonl file to store the data
-    with open(dir_path, "r") as f:
-        return [json.loads(line) for line in f]
 
 def spec_gen(
     model: DecoderBase,

@@ -14,6 +14,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from .utils import *
 
 import signal
 
@@ -76,7 +77,9 @@ def remove_print(code):
     code = re.sub("assert (.+), +['\"].+['\"]", "assert \\1", code)
     return code
 
+
 from evalplus.prompt import MBPP_REVIEWER, HUMANEVAL_REVIEWER
+
 
 def construct_reviewer_prompt(code: str, task: str):
     if task in ["humaneval", "lcb"]:
@@ -103,7 +106,8 @@ Write the docstring for the above code.
 '''
     else:
         raise ValueError(f"Unknown task: {task}")
-    
+
+
 def get_logprobs(args, workdir: PathLike, model: DecoderBase, id_range=None):
     with Progress(
         TextColumn(
