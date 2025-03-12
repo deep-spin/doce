@@ -272,7 +272,8 @@ def get_outputs(args):
             try:
                 generated_inputs.append(eval(elem['input']))
             except Exception as e:
-                print(elem['input'])
+                pass
+                # print(elem['input'])
         
         for i, hyp in enumerate(eval_results["eval"][task_id]):
             exec_outputs[task_id][i] = {}
