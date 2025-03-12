@@ -128,7 +128,9 @@ def unsafe_execute(
         chdir = os.chdir
         # Disable functionalities that can make destructive changes to the test.
         # allow only 4GB memory usage
-        maximum_memory_bytes = 4 * 1024 * 1024 * 1024
+        # for LCB I change it to 0.5 GB
+        #maximum_memory_bytes = 4 * 1024 * 1024 * 1024
+        maximum_memory_bytes = 512 * 1024 * 1024
         reliability_guard(maximum_memory_bytes=maximum_memory_bytes)
         exec_globals = {}
         try:
@@ -211,6 +213,8 @@ def untrusted_check(
     gt_time_limit_factor: float = 2.0,
 ) -> Tuple[str, np.ndarray]:
     time_limits = [max(min_time_limit, gt_time_limit_factor * t) for t in ref_time]
+    if dataset == "lcb":
+        time_limits = [ 2.0 for t in ref_time]
     timeout = min(os.getenv("EVALPLUS_TIMEOUT_PER_TASK", 60), sum(time_limits)) + 1
     if not fast_check:
         timeout += 1  # extra time for data collection
