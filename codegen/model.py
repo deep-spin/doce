@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from abc import ABC, abstractmethod
 from typing import List, Any
 from warnings import warn
@@ -8,13 +9,13 @@ os.environ["HF_HOME"] = os.environ.get("HF_HOME", "/path/to/huggingface")
 
 import openai
 import torch
-from transformers import (
-    AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM,
-    AutoTokenizer,
-    StoppingCriteria,
-    StoppingCriteriaList,
-)
+# from transformers import (
+#     AutoModelForCausalLM,
+#     AutoModelForSeq2SeqLM,
+#     AutoTokenizer,
+#     StoppingCriteria,
+#     StoppingCriteriaList,
+# )
 from vllm import LLM, SamplingParams
 
 from evalplus.gen.util.api_request import make_auto_request
@@ -23,43 +24,43 @@ EOS = ["<|endoftext|>", "<|endofmask|>", "</s>"]
 
 
 # Adopted from https://github.com/huggingface/transformers/pull/14897
-class EndOfFunctionCriteria(StoppingCriteria):
-    def __init__(self, start_length, eos, tokenizer, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.start_length = start_length
-        self.eos = eos
-        self.tokenizer = tokenizer
-        self.end_length = {}
+# class EndOfFunctionCriteria(StoppingCriteria):
+#     def __init__(self, start_length, eos, tokenizer, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.start_length = start_length
+#         self.eos = eos
+#         self.tokenizer = tokenizer
+#         self.end_length = {}
 
-    def __call__(self, input_ids, scores, **kwargs):
-        """Returns true if all generated sequences contain any of the end-of-function strings."""
-        decoded_generations = self.tokenizer.batch_decode(
-            input_ids[:, self.start_length :]
-        )
-        done = []
-        for index, decoded_generation in enumerate(decoded_generations):
-            finished = any(
-                [stop_string in decoded_generation for stop_string in self.eos]
-            )
-            if (
-                finished and index not in self.end_length
-            ):  # ensures first time we see it
-                for stop_string in self.eos:
-                    if stop_string in decoded_generation:
-                        self.end_length[index] = len(
-                            input_ids[
-                                index,  # get length of actual generation
-                                self.start_length : -len(
-                                    self.tokenizer.encode(
-                                        stop_string,
-                                        add_special_tokens=False,
-                                        return_tensors="pt",
-                                    )[0]
-                                ),
-                            ]
-                        )
-            done.append(finished)
-        return all(done)
+#     def __call__(self, input_ids, scores, **kwargs):
+#         """Returns true if all generated sequences contain any of the end-of-function strings."""
+#         decoded_generations = self.tokenizer.batch_decode(
+#             input_ids[:, self.start_length :]
+#         )
+#         done = []
+#         for index, decoded_generation in enumerate(decoded_generations):
+#             finished = any(
+#                 [stop_string in decoded_generation for stop_string in self.eos]
+#             )
+#             if (
+#                 finished and index not in self.end_length
+#             ):  # ensures first time we see it
+#                 for stop_string in self.eos:
+#                     if stop_string in decoded_generation:
+#                         self.end_length[index] = len(
+#                             input_ids[
+#                                 index,  # get length of actual generation
+#                                 self.start_length : -len(
+#                                     self.tokenizer.encode(
+#                                         stop_string,
+#                                         add_special_tokens=False,
+#                                         return_tensors="pt",
+#                                     )[0]
+#                                 ),
+#                             ]
+#                         )
+#             done.append(finished)
+#         return all(done)
 
 
 class DecoderBase(ABC):
@@ -116,40 +117,9 @@ class VLlmDecoder(DecoderBase):
             }
         if "CodeLlama" in name:
             kwargs["dtype"] = "bfloat16"
-        elif "code-millenials" in name:
-            kwargs["dtype"] = "float16"
-        elif "uukuguy/speechless-code-mistral-7b-v1.0" == name:
-            kwargs["dtype"] = "float16"
-        elif "whiterabbitneo/WhiteRabbitNeo-33B-v-1" == name:
-            kwargs["dtype"] = "float16"
-        elif "uukuguy/speechless-codellama-34b-v2.0" == name:
-            kwargs["dtype"] = "float16"
-        elif "uukuguy/speechless-coder-ds-6.7b" == name:
-            kwargs["dtype"] = "float16"
-        elif "uukuguy/speechless-coding-7b-16k-tora" == name:
-            kwargs["dtype"] = "bfloat16"
-        elif "CodeBooga" in name:
-            kwargs["dtype"] = "float16"
-        elif "ajibawa-2023/Code-13B" == name:
-            kwargs["dtype"] = "bfloat16"
-        elif "ajibawa-2023/Code-33B" == name:
-            kwargs["dtype"] = "bfloat16"
         elif "WizardCoder" in name:
             kwargs["dtype"] = "float16"
         elif "deepseek" in name:
-            kwargs["dtype"] = "bfloat16"
-        elif "mixtral" in name.lower():
-            kwargs["dtype"] = "bfloat16"
-        elif "solar" in name:
-            kwargs["dtype"] = "float16"
-        elif "mistral" in name.lower():
-            kwargs["dtype"] = "bfloat16"
-        elif "phi" in name.lower():
-            kwargs["dtype"] = "float16"
-            kwargs["trust_remote_code"] = True
-        elif "openchat" in name.lower():
-            kwargs["dtype"] = "bfloat16"
-        elif "python-code" in name:
             kwargs["dtype"] = "bfloat16"
 
         # before we set 4096, I set it to 2048.
@@ -349,6 +319,92 @@ Please complete the following Python function in a markdown style code block:
         return prompt
 
 
+class Alpaca(VLlmDecoder):
+    def __init__(self, name: str, **kwargs) -> None:
+        kwargs["conversational"] = True
+        super().__init__(name, **kwargs)
+        self.eos += ["\n```"]
+
+    def codegen(
+        self, prompt: str, do_sample: bool = True, num_samples: int = 200
+    ) -> List[str]:
+        prompt = f"""Below is an instruction that describes a task. Write a response that appropriately completes request.
+
+### Instruction:
+Create a Python script for this problem:
+{prompt}
+
+### Response:
+```python
+"""
+
+        return VLlmDecoder.codegen(self, prompt, do_sample, num_samples)
+    
+    def construct_instruction(self, prompt: str) -> str:
+        prompt = f"""Below is an instruction that describes a task. Write a response that appropriately completes request.
+
+### Instruction:
+Create a Python script for this problem:
+{prompt}
+
+### Response:
+```python
+"""
+        return prompt
+
+
+class OpenAIChatDecoder(DecoderBase):
+    def __init__(self, name: str, **kwargs) -> None:
+        super().__init__(name, **kwargs)
+        self.client = openai.OpenAI()
+
+    def codegen(
+        self, prompt: str, do_sample: bool = True, num_samples: int = 200
+    ) -> List[str]:
+        if do_sample:
+            assert self.temperature > 0, "Temperature must be positive for sampling"
+
+        batch_size = min(self.batch_size, num_samples)
+        assert batch_size <= 20, "Use larger batch size could blow up the memory!"
+
+        # construct prompt
+        fmt = "json_object" if self.name == "gpt-4-1106-preview" else "text"
+        if fmt == "json_object":
+            message = r'Please complete the following code snippet by generating JSON like {"code": ""}'
+        else:
+            message = r"Please generate code to complete the following problem:"
+
+        message += f"\n```python\n{prompt.strip()}\n```\nSure, here is the code to complete the given problem:```python"
+
+        ret = make_auto_request(
+            self.client,
+            message=message,
+            model=self.name,
+            max_tokens=self.max_new_tokens,
+            temperature=self.temperature,
+            n=batch_size,
+            response_format={"type": fmt},
+        )
+
+        outputs = []
+        for item in ret.choices:
+            content = item.message.content
+            # if json serializable
+            if fmt == "json_object":
+                try:
+                    json_data = json.loads(content)
+                    if json_data.get("code", None) is not None:
+                        outputs.append(prompt + "\n" + json_data["code"])
+                        continue
+
+                    print(f"'code' field not found in: {json_data}")
+                except Exception as e:
+                    print(e)
+            outputs.append(content)
+
+        return outputs
+
+
 def make_model(name: str, batch_size: int = 1, temperature: float = 0.8):
     if name.startswith("gpt-3.5-") or name.startswith("gpt-4-"):
         return OpenAIChatDecoder(
@@ -382,7 +438,6 @@ def make_model(name: str, batch_size: int = 1, temperature: float = 0.8):
             name=f"codellama/CodeLlama-{nb}-Python-hf",
             temperature=temperature,
         )
-
     elif name == "deepseek-coder-16b-instruct":
         return DeepSeekInstruct(
             batch_size=batch_size,
@@ -390,7 +445,6 @@ def make_model(name: str, batch_size: int = 1, temperature: float = 0.8):
             temperature=temperature,
             conversational=True,
         )
-
     elif name.startswith("deepseek-coder"):
         import re
 

@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import time
+import subprocess
 from evalplus.data.utils import CACHE_DIR
 from evalplus.gen.util import trusted_exec
 
@@ -14,6 +15,15 @@ def load_jsonl(dir_path: str):
     # notice that we use the jsonl file to store the data
     with open(dir_path, "r") as f:
         return [json.loads(line) for line in f]
+
+
+def get_free_gpus(threshold=71920):
+    output = subprocess.check_output("nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits", shell=True)
+    gpu_free_memory = [int(x) for x in output.decode("utf-8").strip().split("\n")]
+
+    free_gpus = [i for i, mem in enumerate(gpu_free_memory) if mem > threshold]
+    return free_gpus
+
     
 def get_groundtruth(problems, hashcode, tasks_only_output_not_none):
     cache_file = os.path.join(CACHE_DIR, f"{hashcode}.pkl")

@@ -121,6 +121,7 @@ def unsafe_execute_with_outputs(
         os.rmdir = rmdir
         os.chdir = chdir
 
+
 def get_groundtruth(problems, hashcode, tasks_only_output_not_none):
     cache_file = os.path.join(CACHE_DIR, f"{hashcode}.pkl")
     if os.path.exists(cache_file):
@@ -157,18 +158,8 @@ def get_groundtruth(problems, hashcode, tasks_only_output_not_none):
 
     return expected_output
 
-def untrusted_check(
-    dataset: str,
-    entry_point: str,
-    code: str,
-    task_id: str,
-    solution_id: str,
-    inputs: List[Any],
-    expected: List[Any],
-    ref_time,
-    stat,
-    details,
-):
+
+def untrusted_check( dataset: str, entry_point: str, code: str, task_id: str, solution_id: str, inputs: List[Any], expected: List[Any], ref_time, stat, details):
     min_time_limit=1.0
     gt_time_limit_factor=4.0
     fast_check = False
@@ -181,20 +172,7 @@ def untrusted_check(
 
     p = multiprocessing.Process(
         target=unsafe_execute_with_outputs,
-        #target=unsafe_execute,
-        args=(
-            dataset,
-            entry_point,
-            code,
-            task_id,
-            solution_id,
-            inputs,
-            expected,
-            time_limits,
-            stat,
-            details,
-            outputs,
-        ),
+        args=(dataset, entry_point, code, task_id, solution_id, inputs, expected, time_limits, stat, details, outputs),
     )
     p.start()
     p.join(timeout=timeout + 1)
