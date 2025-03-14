@@ -14,7 +14,7 @@ from rich.progress import (
 )
 
 import torch.multiprocessing as mp
-from .utils import *
+from utils import *
 
 
 def construct_contract_prompt(prompt: str, contract_type: str, contract: str) -> str:
@@ -102,7 +102,7 @@ def ask_llm_worker(args, gpu_ids, dataset_chunk, workdir, result_queue):
         result_queue.put(("progress", 1))
 
 
-def code_generate(args, workdir: PathLike, id_range=None, free_gpus=1, tensor_parallel_size=1):
+def code_generate(args, workdir: PathLike, id_range=None, free_gpus=[0], tensor_parallel_size=1):
 
     result_queue = mp.Queue()
 
@@ -131,7 +131,7 @@ def code_generate(args, workdir: PathLike, id_range=None, free_gpus=1, tensor_pa
             raise ValueError(f"Unknown dataset: {args.dataset}")
 
         dataset_items = list(dataset.items())
-        num_processes = free_gpus // tensor_parallel_size
+        num_processes = len(free_gpus) // tensor_parallel_size
         # divide the messages_list into equal part for each process
         chunk_size = (len(dataset_items) + num_processes - 1) // num_processes
         dataset_chunks = [dataset_items[i*chunk_size:(i+1)*chunk_size] for i in range(num_processes)]
